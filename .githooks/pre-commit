@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# Get current commit hash
+COMMIT_HASH=$(git rev-parse --short HEAD 2>/dev/null)
+
+# Get current tag if exists
+VERSION_TAG=$(git describe --tags --abbrev=0 2>/dev/null)
+if [ -z "$VERSION_TAG" ]; then
+    VERSION_TAG="v0.0.0"
+fi
+
+# Update version.js
+cat > version.js << EOF
+const GAME_VERSION = "$COMMIT_HASH";
+const VERSION_TAG = "$VERSION_TAG";
+EOF
+
+# Stage the updated version.js
+git add version.js
