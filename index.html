@@ -132,6 +132,55 @@
             pointer-events: none;
         }
 
+        .pause-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(5, 10, 18, 0.82);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 4;
+            opacity: 1;
+            transition: opacity 0.2s ease;
+        }
+
+        .pause-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .pause-title {
+            color: #7ee9ff;
+            font-size: 42px;
+            letter-spacing: 3px;
+            text-shadow: 0 0 18px rgba(126, 233, 255, 0.5);
+            margin-bottom: 14px;
+        }
+
+        .pause-subtitle {
+            color: #b7dfff;
+            font-size: 13px;
+            margin-bottom: 22px;
+            letter-spacing: 1px;
+        }
+
+        .pause-btn {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 15px;
+            padding: 11px 26px;
+            border: 2px solid #7ee9ff;
+            color: #7ee9ff;
+            background: transparent;
+            cursor: pointer;
+            letter-spacing: 1px;
+        }
+
+        .pause-btn:hover {
+            background: #7ee9ff;
+            color: #091622;
+        }
+
         .upgrade-title {
             font-size: 30px;
             color: #00ff88;
@@ -297,6 +346,11 @@
             <div class="upgrade-subtitle" id="upgradeSubtitle">战斗暂停，选择 1 个升级继续</div>
             <div class="upgrade-cards" id="upgradeCards"></div>
         </div>
+        <div class="pause-overlay hidden" id="pauseOverlay">
+            <div class="pause-title">暂停中</div>
+            <div class="pause-subtitle">按 P / ESC 继续，或点击按钮继续战斗</div>
+            <button class="pause-btn" id="resumeBtn">继续游戏</button>
+        </div>
         <div class="menu-overlay" id="menuOverlay">
             <div class="menu-title">太空射击</div>
             <div class="menu-subtitle">SPACE SHOOTER</div>
@@ -326,9 +380,12 @@
         const upgradeTitleEl = document.getElementById('upgradeTitle');
         const upgradeSubtitleEl = document.getElementById('upgradeSubtitle');
         const upgradeCardsEl = document.getElementById('upgradeCards');
+        const pauseOverlay = document.getElementById('pauseOverlay');
+        const resumeBtn = document.getElementById('resumeBtn');
 
         let gameRunning = false;
         let choosingUpgrade = false;
+        let paused = false;
         let score = 0;
         let lives = 3;
         let level = 1;
@@ -493,8 +550,7 @@
             up: false,
             down: false,
             left: false,
-            right: false,
-            shoot: false
+            right: false
         };
 
         function loadMetaProgress() {
@@ -672,7 +728,7 @@
             if (playerInvulnFrames > 0) playerInvulnFrames--;
             if (player.shootCooldown > 0) player.shootCooldown--;
 
-            if (keys.shoot && player.shootCooldown <= 0) {
+            if (player.shootCooldown <= 0) {
                 firePlayerWeapon();
             }
 
@@ -1249,7 +1305,9 @@
         function gameOver() {
             gameRunning = false;
             choosingUpgrade = false;
+            paused = false;
             upgradeOverlay.classList.add('hidden');
+            pauseOverlay.classList.add('hidden');
             finalScoreEl.querySelector('span').textContent = score;
             finalScoreEl.style.display = 'block';
             document.querySelector('.menu-title').textContent = '游戏结束';
@@ -1276,6 +1334,7 @@
         function startGame() {
             gameRunning = true;
             choosingUpgrade = false;
+            paused = false;
             score = 0;
             level = 1;
             xp = 0;
@@ -1313,6 +1372,7 @@
             metaProgressEl.style.display = 'none';
             finalScoreEl.style.display = 'none';
             upgradeOverlay.classList.add('hidden');
+            pauseOverlay.classList.add('hidden');
             menuOverlay.classList.add('hidden');
             // 设置版本号显示
             if (typeof VERSION_TAG !== 'undefined' && typeof GAME_VERSION !== 'undefined') {
@@ -1328,7 +1388,7 @@
             ctx.fillStyle = '#0a0a1a';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            if (!choosingUpgrade) {
+            if (!choosingUpgrade && !paused) {
                 updateStars();
                 spawnPowerup();
                 updatePowerups();
@@ -1358,31 +1418,45 @@
             requestAnimationFrame(gameLoop);
         }
 
+        function setPaused(nextPaused) {
+            if (!gameRunning || choosingUpgrade) return;
+            paused = nextPaused;
+            if (paused) pauseOverlay.classList.remove('hidden');
+            else pauseOverlay.classList.add('hidden');
+        }
+
+        function togglePause() {
+            setPaused(!paused);
+        }
+
         document.addEventListener('keydown', e => {
+            if ((e.key === 'Escape' || e.key === 'p' || e.key === 'P') && gameRunning && !choosingUpgrade) {
+                togglePause();
+                e.preventDefault();
+                return;
+            }
             if (choosingUpgrade && ['1', '2', '3', '4'].includes(e.key)) {
                 pickUpgrade(Number(e.key) - 1);
                 e.preventDefault();
                 return;
             }
+            if (paused) return;
             if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') keys.up = true;
             if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') keys.down = true;
             if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = true;
             if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = true;
-            if (e.key === ' ') {
-                keys.shoot = true;
-                e.preventDefault();
-            }
         });
 
         document.addEventListener('keyup', e => {
+            if (paused) return;
             if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') keys.up = false;
             if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') keys.down = false;
             if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = false;
             if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = false;
-            if (e.key === ' ') keys.shoot = false;
         });
 
         startBtn.addEventListener('click', startGame);
+        resumeBtn.addEventListener('click', () => setPaused(false));
 
         initStars();
         updateLivesDisplay();
