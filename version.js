@@ -1,2 +1,2 @@
-const GAME_VERSION = "6a60d39";
+const GAME_VERSION = "d708383";
 const VERSION_TAG = "v1.0.0";
