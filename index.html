@@ -174,10 +174,11 @@
             <div class="final-score" id="finalScore" style="display: none;">最终得分: <span>0</span></div>
             <button class="start-btn" id="startBtn">开始游戏</button>
             <div class="controls-hint">WASD/方向键 移动 | 空格 射击</div>
-            <div class="version-info">v1.0.0 · 8d5a572</div>
+            <div class="version-info" id="versionInfo">v1.0.0 · 8d5a572</div>
         </div>
     </div>
 
+    <script src="version.js"></script>
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
@@ -773,6 +774,10 @@
             updateLivesDisplay();
             updatePowerupTimerDisplay();
             menuOverlay.classList.add('hidden');
+            // 设置版本号显示
+            if (typeof VERSION_TAG !== 'undefined' && typeof GAME_VERSION !== 'undefined') {
+                document.getElementById('versionInfo').textContent = VERSION_TAG + ' · ' + GAME_VERSION;
+            }
             initStars();
             gameLoop();
         }
