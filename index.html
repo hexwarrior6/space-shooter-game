@@ -51,6 +51,21 @@
             text-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
         }
 
+        .powerup-timer {
+            position: absolute;
+            top: 50px;
+            left: 20px;
+            color: #ffff00;
+            font-size: 14px;
+            text-shadow: 0 0 10px rgba(255, 255, 0, 0.8);
+            pointer-events: none;
+        }
+
+        .powerup-timer .active {
+            color: #00ff88;
+            text-shadow: 0 0 10px rgba(0, 255, 136, 0.8);
+        }
+
         .lives span {
             color: #ff3366;
             text-shadow: 0 0 10px rgba(255, 51, 102, 0.8);
@@ -139,6 +154,11 @@
             <div class="score">分数: <span id="scoreValue">0</span></div>
             <div class="lives">生命: <span id="livesValue">❤❤❤</span></div>
         </div>
+        <div class="powerup-timer">
+            <div id="doubleShotTimer" style="display: none;">双排射击: <span>0</span>s</div>
+            <div id="laserTimer" style="display: none;">激光枪: <span>0</span>s</div>
+            <div id="invincibleTimer" style="display: none;">无敌: <span>0</span>s</div>
+        </div>
         <div class="menu-overlay" id="menuOverlay">
             <div class="menu-title">太空射击</div>
             <div class="menu-subtitle">SPACE SHOOTER</div>
@@ -185,6 +205,23 @@
 
         // 粒子效果
         let particles = [];
+
+        // 升级道具
+        let powerups = [];
+
+        // 玩家升级状态
+        const playerPowerups = {
+            doubleShot: { active: false, timer: 0, duration: 600 }, // 60fps * 10s = 600
+            laser: { active: false, timer: 0, duration: 600 },
+            invincible: { active: false, timer: 0, duration: 600 }
+        };
+
+        // 升级类型定义
+        const powerupTypes = [
+            { type: 'doubleShot', color: '#00ffff', name: '双排射击' },
+            { type: 'laser', color: '#ff00ff', name: '激光枪' },
+            { type: 'invincible', color: '#ffff00', name: '无敌' }
+        ];
 
         // 按键状态
         const keys = {
@@ -236,6 +273,11 @@
             ctx.save();
             ctx.translate(player.x, player.y);
 
+            // 无敌状态闪烁效果
+            if (playerPowerups.invincible.active && Math.floor(frameCount / 5) % 2 === 0) {
+                ctx.globalAlpha = 0.5;
+            }
+
             // 引擎尾焰
             const flameLength = 15 + Math.sin(frameCount * 0.3) * 5;
             ctx.beginPath();
@@ -244,7 +286,7 @@
             ctx.lineTo(8, 15);
             ctx.closePath();
             const gradient = ctx.createLinearGradient(0, 15, 0, 15 + flameLength);
-            gradient.addColorStop(0, '#00ff88');
+            gradient.addColorStop(0, playerPowerups.invincible.active ? '#ffff00' : '#00ff88');
             gradient.addColorStop(1, 'transparent');
             ctx.fillStyle = gradient;
             ctx.fill();
@@ -256,7 +298,7 @@
             ctx.lineTo(0, 12);
             ctx.lineTo(15, 20);
             ctx.closePath();
-            ctx.fillStyle = '#00ff88';
+            ctx.fillStyle = playerPowerups.invincible.active ? '#ffff00' : '#00ff88';
             ctx.fill();
             ctx.strokeStyle = '#00ffff';
             ctx.lineWidth = 2;
@@ -267,6 +309,15 @@
             ctx.arc(0, -5, 5, 0, Math.PI * 2);
             ctx.fillStyle = '#00ffff';
             ctx.fill();
+
+            // 无敌护盾效果
+            if (playerPowerups.invincible.active) {
+                ctx.beginPath();
+                ctx.arc(0, 0, 25, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(255, 255, 0, ${0.3 + Math.sin(frameCount * 0.1) * 0.2})`;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+            }
 
             ctx.restore();
         }
@@ -281,26 +332,85 @@
             if (player.shootCooldown > 0) player.shootCooldown--;
 
             if (keys.shoot && player.shootCooldown === 0) {
-                playerBullets.push({
-                    x: player.x,
-                    y: player.y - 25,
-                    width: 4,
-                    height: 15,
-                    speed: 10
-                });
-                player.shootCooldown = 10;
+                // 根据升级状态选择射击方式
+                if (playerPowerups.laser.active) {
+                    // 激光枪 - 穿透性激光
+                    playerBullets.push({
+                        x: player.x,
+                        y: player.y - 25,
+                        width: 8,
+                        height: 40,
+                        speed: 15,
+                        isLaser: true,
+                        damage: 3
+                    });
+                    player.shootCooldown = 8;
+                } else if (playerPowerups.doubleShot.active) {
+                    // 双排射击
+                    playerBullets.push({
+                        x: player.x - 10,
+                        y: player.y - 25,
+                        width: 4,
+                        height: 15,
+                        speed: 10
+                    });
+                    playerBullets.push({
+                        x: player.x + 10,
+                        y: player.y - 25,
+                        width: 4,
+                        height: 15,
+                        speed: 10
+                    });
+                    player.shootCooldown = 10;
+                } else {
+                    // 普通射击
+                    playerBullets.push({
+                        x: player.x,
+                        y: player.y - 25,
+                        width: 4,
+                        height: 15,
+                        speed: 10
+                    });
+                    player.shootCooldown = 10;
+                }
+            }
+
+            // 更新升级状态
+            for (const key in playerPowerups) {
+                const pu = playerPowerups[key];
+                if (pu.active) {
+                    pu.timer--;
+                    if (pu.timer <= 0) {
+                        pu.active = false;
+                    }
+                }
             }
         }
 
         // 绘制子弹
         function drawBullets() {
             // 玩家子弹
-            ctx.fillStyle = '#00ffff';
-            ctx.shadowColor = '#00ffff';
-            ctx.shadowBlur = 10;
             playerBullets.forEach(bullet => {
-                ctx.fillRect(bullet.x - bullet.width / 2, bullet.y, bullet.width, bullet.height);
+                if (bullet.isLaser) {
+                    // 激光枪效果
+                    ctx.save();
+                    ctx.shadowColor = '#ff00ff';
+                    ctx.shadowBlur = 20;
+                    const gradient = ctx.createLinearGradient(0, bullet.y, 0, bullet.y + bullet.height);
+                    gradient.addColorStop(0, '#ff00ff');
+                    gradient.addColorStop(0.5, '#ffffff');
+                    gradient.addColorStop(1, '#ff00ff');
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(bullet.x - bullet.width / 2, bullet.y, bullet.width, bullet.height);
+                    ctx.restore();
+                } else {
+                    ctx.fillStyle = '#00ffff';
+                    ctx.shadowColor = '#00ffff';
+                    ctx.shadowBlur = 10;
+                    ctx.fillRect(bullet.x - bullet.width / 2, bullet.y, bullet.width, bullet.height);
+                }
             });
+            ctx.shadowBlur = 0;
 
             // 敌人子弹
             ctx.fillStyle = '#ff6600';
@@ -334,9 +444,72 @@
                     height: 30,
                     speed: 2 + Math.random() * 1.5,
                     shootTimer: Math.random() * 100,
-                    phase: Math.random() * Math.PI * 2
+                    phase: Math.random() * Math.PI * 2,
+                    health: 1
                 });
             }
+        }
+
+        // 生成升级道具
+        function spawnPowerup() {
+            if (Math.random() < 0.006) { // 约每2-3秒生成一次
+                const typeInfo = powerupTypes[Math.floor(Math.random() * powerupTypes.length)];
+                powerups.push({
+                    x: Math.random() * (canvas.width - 40) + 20,
+                    y: -20,
+                    width: 25,
+                    height: 25,
+                    speed: 2,
+                    type: typeInfo.type,
+                    color: typeInfo.color,
+                    name: typeInfo.name,
+                    pulsePhase: Math.random() * Math.PI * 2
+                });
+            }
+        }
+
+        // 绘制升级道具
+        function drawPowerups() {
+            powerups.forEach(pu => {
+                ctx.save();
+                ctx.translate(pu.x, pu.y);
+
+                // 脉冲效果
+                const pulse = 1 + Math.sin(frameCount * 0.1 + pu.pulsePhase) * 0.15;
+                ctx.scale(pulse, pulse);
+
+                // 光晕
+                ctx.shadowColor = pu.color;
+                ctx.shadowBlur = 15;
+
+                // 圆形背景
+                ctx.beginPath();
+                ctx.arc(0, 0, 12, 0, Math.PI * 2);
+                ctx.fillStyle = pu.color;
+                ctx.fill();
+
+                // 内部图标
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = '#000';
+                ctx.font = 'bold 14px Orbitron';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                let icon = '';
+                if (pu.type === 'doubleShot') icon = '≡';
+                else if (pu.type === 'laser') icon = '⚡';
+                else if (pu.type === 'invincible') icon = '★';
+                ctx.fillText(icon, 0, 0);
+
+                ctx.restore();
+            });
+        }
+
+        // 更新升级道具
+        function updatePowerups() {
+            powerups.forEach(pu => {
+                pu.y += pu.speed;
+            });
+            powerups = powerups.filter(pu => pu.y < canvas.height + 30);
         }
 
         // 绘制敌人
@@ -433,50 +606,81 @@
         function checkCollisions() {
             // 玩家子弹击中敌人
             playerBullets = playerBullets.filter(bullet => {
+                let hit = false;
                 for (let i = enemies.length - 1; i >= 0; i--) {
                     const enemy = enemies[i];
                     if (bullet.x > enemy.x - enemy.width / 2 &&
                         bullet.x < enemy.x + enemy.width / 2 &&
                         bullet.y > enemy.y - enemy.height / 2 &&
                         bullet.y < enemy.y + enemy.height / 2) {
-                        createExplosion(enemy.x, enemy.y, 'rgb(255, 51, 102)');
-                        enemies.splice(i, 1);
-                        score += 100;
-                        scoreValue.textContent = score;
-                        return false;
+                        if (bullet.isLaser) {
+                            // 激光穿透，持续伤害
+                            enemy.health -= bullet.damage || 1;
+                            if (enemy.health <= 0) {
+                                createExplosion(enemy.x, enemy.y, 'rgb(255, 51, 102)');
+                                enemies.splice(i, 1);
+                                score += 100;
+                                scoreValue.textContent = score;
+                            }
+                        } else {
+                            createExplosion(enemy.x, enemy.y, 'rgb(255, 51, 102)');
+                            enemies.splice(i, 1);
+                            score += 100;
+                            scoreValue.textContent = score;
+                        }
+                        hit = true;
+                        if (!bullet.isLaser) break;
                     }
+                }
+                return bullet.isLaser ? true : !hit;
+            });
+
+            // 玩家拾取升级道具
+            powerups = powerups.filter(pu => {
+                const dx = player.x - pu.x;
+                const dy = player.y - pu.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                if (distance < 35) {
+                    // 激活对应升级
+                    playerPowerups[pu.type].active = true;
+                    playerPowerups[pu.type].timer = playerPowerups[pu.type].duration;
+                    // 特效
+                    createExplosion(pu.x, pu.y, pu.color);
+                    return false;
                 }
                 return true;
             });
 
             // 敌人子弹击中玩家
-            enemyBullets = enemyBullets.filter(bullet => {
-                if (bullet.x > player.x - 15 &&
-                    bullet.x < player.x + 15 &&
-                    bullet.y > player.y - 20 &&
-                    bullet.y < player.y + 20) {
-                    createExplosion(player.x, player.y, 'rgb(0, 255, 136)');
-                    lives--;
-                    updateLivesDisplay();
-                    return false;
-                }
-                return true;
-            });
+            if (!playerPowerups.invincible.active) {
+                enemyBullets = enemyBullets.filter(bullet => {
+                    if (bullet.x > player.x - 15 &&
+                        bullet.x < player.x + 15 &&
+                        bullet.y > player.y - 20 &&
+                        bullet.y < player.y + 20) {
+                        createExplosion(player.x, player.y, 'rgb(0, 255, 136)');
+                        lives--;
+                        updateLivesDisplay();
+                        return false;
+                    }
+                    return true;
+                });
 
-            // 玩家撞敌人
-            enemies = enemies.filter(enemy => {
-                const dx = player.x - enemy.x;
-                const dy = player.y - enemy.y;
-                const distance = Math.sqrt(dx * dx + dy * dy);
-                if (distance < 30) {
-                    createExplosion(enemy.x, enemy.y, 'rgb(255, 51, 102)');
-                    createExplosion(player.x, player.y, 'rgb(0, 255, 136)');
-                    lives--;
-                    updateLivesDisplay();
-                    return false;
-                }
-                return true;
-            });
+                // 玩家撞敌人
+                enemies = enemies.filter(enemy => {
+                    const dx = player.x - enemy.x;
+                    const dy = player.y - enemy.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    if (distance < 30) {
+                        createExplosion(enemy.x, enemy.y, 'rgb(255, 51, 102)');
+                        createExplosion(player.x, player.y, 'rgb(0, 255, 136)');
+                        lives--;
+                        updateLivesDisplay();
+                        return false;
+                    }
+                    return true;
+                });
+            }
 
             // 检查游戏结束
             if (lives <= 0) {
@@ -491,6 +695,40 @@
                 hearts += '❤';
             }
             livesValue.textContent = hearts;
+        }
+
+        // 更新升级计时器显示
+        function updatePowerupTimerDisplay() {
+            const doubleShotEl = document.getElementById('doubleShotTimer');
+            const laserEl = document.getElementById('laserTimer');
+            const invincibleEl = document.getElementById('invincibleTimer');
+
+            if (playerPowerups.doubleShot.active) {
+                doubleShotEl.style.display = 'block';
+                doubleShotEl.querySelector('span').textContent = Math.ceil(playerPowerups.doubleShot.timer / 60);
+                doubleShotEl.classList.add('active');
+            } else {
+                doubleShotEl.style.display = 'none';
+                doubleShotEl.classList.remove('active');
+            }
+
+            if (playerPowerups.laser.active) {
+                laserEl.style.display = 'block';
+                laserEl.querySelector('span').textContent = Math.ceil(playerPowerups.laser.timer / 60);
+                laserEl.classList.add('active');
+            } else {
+                laserEl.style.display = 'none';
+                laserEl.classList.remove('active');
+            }
+
+            if (playerPowerups.invincible.active) {
+                invincibleEl.style.display = 'block';
+                invincibleEl.querySelector('span').textContent = Math.ceil(playerPowerups.invincible.timer / 60);
+                invincibleEl.classList.add('active');
+            } else {
+                invincibleEl.style.display = 'none';
+                invincibleEl.classList.remove('active');
+            }
         }
 
         // 游戏结束
@@ -515,8 +753,15 @@
             enemyBullets = [];
             enemies = [];
             particles = [];
+            powerups = [];
+            // 重置升级状态
+            for (const key in playerPowerups) {
+                playerPowerups[key].active = false;
+                playerPowerups[key].timer = 0;
+            }
             scoreValue.textContent = '0';
             updateLivesDisplay();
+            updatePowerupTimerDisplay();
             menuOverlay.classList.add('hidden');
             initStars();
             gameLoop();
@@ -534,6 +779,11 @@
             updateStars();
             drawStars();
 
+            // 升级道具
+            spawnPowerup();
+            updatePowerups();
+            drawPowerups();
+
             updatePlayer();
             drawPlayer();
 
@@ -548,6 +798,8 @@
             drawParticles();
 
             checkCollisions();
+
+            updatePowerupTimerDisplay();
 
             frameCount++;
             requestAnimationFrame(gameLoop);
