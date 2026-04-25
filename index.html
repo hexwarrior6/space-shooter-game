@@ -42,13 +42,36 @@
             padding: 15px 20px;
             display: flex;
             justify-content: space-between;
+            align-items: flex-start;
+            gap: 20px;
             pointer-events: none;
         }
 
-        .score, .lives {
+        .score, .lives, .level {
             color: #ffffff;
             font-size: 18px;
             text-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
+        }
+
+        .level {
+            min-width: 240px;
+            text-align: center;
+        }
+
+        .xp-bar {
+            width: 240px;
+            height: 10px;
+            border: 1px solid #00ffff;
+            margin-top: 6px;
+            background: rgba(0, 20, 40, 0.8);
+            box-shadow: inset 0 0 8px rgba(0, 255, 255, 0.25);
+        }
+
+        .xp-fill {
+            width: 0;
+            height: 100%;
+            background: linear-gradient(90deg, #00ff88, #00ffff);
+            transition: width 0.2s ease;
         }
 
         .powerup-timer {
@@ -89,6 +112,81 @@
         .menu-overlay.hidden {
             opacity: 0;
             pointer-events: none;
+        }
+
+        .upgrade-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(6, 12, 20, 0.86);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            opacity: 1;
+            transition: opacity 0.25s ease;
+            z-index: 5;
+        }
+
+        .upgrade-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .upgrade-title {
+            font-size: 30px;
+            color: #00ff88;
+            margin-bottom: 10px;
+            text-shadow: 0 0 18px rgba(0, 255, 136, 0.6);
+        }
+
+        .upgrade-subtitle {
+            color: #9fe8ff;
+            font-size: 13px;
+            margin-bottom: 18px;
+            letter-spacing: 1px;
+        }
+
+        .upgrade-cards {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 14px;
+            width: calc(100% - 80px);
+            max-width: 720px;
+        }
+
+        .upgrade-card {
+            font-family: 'Orbitron', sans-serif;
+            background: rgba(8, 18, 30, 0.95);
+            border: 2px solid #5dc2ff;
+            color: #fff;
+            text-align: left;
+            min-height: 190px;
+            padding: 14px;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .upgrade-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35);
+        }
+
+        .upgrade-rarity {
+            font-size: 11px;
+            opacity: 0.9;
+            letter-spacing: 1.5px;
+            margin-bottom: 8px;
+        }
+
+        .upgrade-name {
+            font-size: 18px;
+            margin-bottom: 8px;
+        }
+
+        .upgrade-desc {
+            font-size: 13px;
+            line-height: 1.4;
+            color: #d5eeff;
         }
 
         .menu-title {
@@ -145,6 +243,37 @@
             font-size: 12px;
             letter-spacing: 1px;
         }
+
+        .run-upgrades {
+            margin-top: 14px;
+            max-width: 540px;
+            color: #c2ebff;
+            font-size: 12px;
+            line-height: 1.5;
+            text-align: center;
+            display: none;
+        }
+
+        .meta-progress {
+            margin-top: 8px;
+            color: #ffe182;
+            font-size: 12px;
+            letter-spacing: 0.5px;
+            display: none;
+        }
+
+        @media (max-width: 860px) {
+            .upgrade-cards {
+                grid-template-columns: 1fr;
+                width: calc(100% - 28px);
+                max-height: 72vh;
+                overflow-y: auto;
+            }
+
+            .upgrade-card {
+                min-height: 150px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -152,6 +281,10 @@
         <canvas id="gameCanvas" width="800" height="600"></canvas>
         <div class="ui-overlay">
             <div class="score">分数: <span id="scoreValue">0</span></div>
+            <div class="level">
+                <div>等级: <span id="levelValue">1</span></div>
+                <div class="xp-bar"><div class="xp-fill" id="xpFill"></div></div>
+            </div>
             <div class="lives">生命: <span id="livesValue">❤❤❤</span></div>
         </div>
         <div class="powerup-timer">
@@ -159,10 +292,17 @@
             <div id="laserTimer" style="display: none;">激光枪: <span>0</span>s</div>
             <div id="invincibleTimer" style="display: none;">无敌: <span>0</span>s</div>
         </div>
+        <div class="upgrade-overlay hidden" id="upgradeOverlay">
+            <div class="upgrade-title" id="upgradeTitle">选择强化</div>
+            <div class="upgrade-subtitle" id="upgradeSubtitle">战斗暂停，选择 1 个升级继续</div>
+            <div class="upgrade-cards" id="upgradeCards"></div>
+        </div>
         <div class="menu-overlay" id="menuOverlay">
             <div class="menu-title">太空射击</div>
             <div class="menu-subtitle">SPACE SHOOTER</div>
             <div class="final-score" id="finalScore" style="display: none;">最终得分: <span>0</span></div>
+            <div class="meta-progress" id="metaProgress"></div>
+            <div class="run-upgrades" id="runUpgrades"></div>
             <button class="start-btn" id="startBtn">开始游戏</button>
             <div class="controls-hint">WASD/方向键 移动 | 空格 射击</div>
         </div>
@@ -173,57 +313,180 @@
         const ctx = canvas.getContext('2d');
         const scoreValue = document.getElementById('scoreValue');
         const livesValue = document.getElementById('livesValue');
+        const levelValue = document.getElementById('levelValue');
+        const xpFill = document.getElementById('xpFill');
         const menuOverlay = document.getElementById('menuOverlay');
         const startBtn = document.getElementById('startBtn');
         const finalScoreEl = document.getElementById('finalScore');
+        const runUpgradesEl = document.getElementById('runUpgrades');
+        const metaProgressEl = document.getElementById('metaProgress');
+        const upgradeOverlay = document.getElementById('upgradeOverlay');
+        const upgradeTitleEl = document.getElementById('upgradeTitle');
+        const upgradeSubtitleEl = document.getElementById('upgradeSubtitle');
+        const upgradeCardsEl = document.getElementById('upgradeCards');
 
-        // 游戏状态
         let gameRunning = false;
+        let choosingUpgrade = false;
         let score = 0;
         let lives = 3;
+        let level = 1;
+        let xp = 0;
+        let xpToNext = 300;
         let frameCount = 0;
+        let pendingLevelUps = 0;
+        let pendingBossRewards = 0;
+        let queuedBossSpawns = 0;
+        let playerInvulnFrames = 0;
+        let offeredUpgrades = [];
+        let currentUpgradeContext = 'level';
+        let runUpgradeHistory = {};
 
-        // 玩家
         const player = {
             x: 400,
             y: 520,
             width: 30,
             height: 40,
-            speed: 6,
             shootCooldown: 0
         };
 
-        // 子弹数组
+        const defaultPlayerStats = {
+            fireCooldown: 10,
+            bulletSpeed: 10,
+            bulletDamage: 1,
+            extraShots: 0,
+            laserChance: 0,
+            shield: 0,
+            scoreMultiplier: 1,
+            moveSpeed: 6,
+            maxLives: 3,
+            laserPenetration: 1
+        };
+
+        const playerStats = { ...defaultPlayerStats };
+        const upgradeStacks = {};
+
         let playerBullets = [];
         let enemyBullets = [];
-
-        // 敌人数组
         let enemies = [];
-
-        // 星星背景
         let stars = [];
-
-        // 粒子效果
         let particles = [];
-
-        // 升级道具
         let powerups = [];
 
-        // 玩家升级状态
         const playerPowerups = {
-            doubleShot: { active: false, timer: 0, duration: 600 }, // 60fps * 10s = 600
+            doubleShot: { active: false, timer: 0, duration: 600 },
             laser: { active: false, timer: 0, duration: 600 },
             invincible: { active: false, timer: 0, duration: 600 }
         };
 
-        // 升级类型定义
         const powerupTypes = [
             { type: 'doubleShot', color: '#00ffff', name: '双排射击' },
             { type: 'laser', color: '#ff00ff', name: '激光枪' },
             { type: 'invincible', color: '#ffff00', name: '无敌' }
         ];
 
-        // 按键状态
+        const rarityConfig = {
+            common: { label: '普通', color: '#78f7ff', weight: 1 },
+            rare: { label: '稀有', color: '#4e8bff', weight: 0.6 },
+            epic: { label: '史诗', color: '#b06cff', weight: 0.3 },
+            legendary: { label: '传说', color: '#f0bc40', weight: 0.12 }
+        };
+
+        const enemyTypeConfig = {
+            basic: { color: '#ff3366', stroke: '#ff6699', health: 1, speedMin: 2.0, speedMax: 3.2, shootBase: 120, xp: 55, score: 100, size: 30 },
+            fast: { color: '#ff7a4a', stroke: '#ffb187', health: 1, speedMin: 3.6, speedMax: 4.8, shootBase: 150, xp: 65, score: 120, size: 26 },
+            tank: { color: '#8f4dff', stroke: '#caa3ff', health: 4, speedMin: 1.3, speedMax: 2.0, shootBase: 95, xp: 115, score: 180, size: 38 },
+            shooter: { color: '#ff4aa4', stroke: '#ff87c6', health: 2, speedMin: 2.1, speedMax: 2.8, shootBase: 60, xp: 95, score: 150, size: 30 },
+            elite: { color: '#ffd257', stroke: '#fff4b4', health: 8, speedMin: 2.6, speedMax: 3.6, shootBase: 58, xp: 240, score: 360, size: 40 },
+            boss: { color: '#ff8f2f', stroke: '#fff0a8', health: 60, speedMin: 0.9, speedMax: 1.3, shootBase: 30, xp: 900, score: 1500, size: 86 }
+        };
+
+        const metaProgress = loadMetaProgress();
+
+        const upgradePool = [
+            {
+                id: 'spreadShot',
+                name: '分裂弹仓',
+                desc: '额外子弹 +1（子弹越多，单发伤害越低）',
+                rarity: 'common',
+                maxStacks: 6,
+                apply() {
+                    playerStats.extraShots += 1;
+                }
+            },
+            {
+                id: 'fireRate',
+                name: '高速炮管',
+                desc: '射击冷却 -15%',
+                rarity: 'common',
+                maxStacks: 8,
+                apply() {
+                    playerStats.fireCooldown = Math.max(4, playerStats.fireCooldown * 0.85);
+                }
+            },
+            {
+                id: 'bulletSpeed',
+                name: '电磁加速',
+                desc: '子弹速度 +12%',
+                rarity: 'common',
+                maxStacks: 8,
+                apply() {
+                    playerStats.bulletSpeed = Math.min(24, playerStats.bulletSpeed * 1.12);
+                }
+            },
+            {
+                id: 'laserChance',
+                name: '量子激发',
+                desc: '激光触发概率 +8%，并增加穿透',
+                rarity: 'rare',
+                maxStacks: 7,
+                apply() {
+                    playerStats.laserChance = Math.min(0.8, playerStats.laserChance + 0.08);
+                    playerStats.laserPenetration += 1;
+                }
+            },
+            {
+                id: 'shield',
+                name: '相位护盾',
+                desc: '获得 1 层护盾，护盾较多时受击会反爆',
+                rarity: 'rare',
+                maxStacks: 7,
+                apply() {
+                    playerStats.shield += 1;
+                }
+            },
+            {
+                id: 'maxLives',
+                name: '应急机体',
+                desc: '生命上限 +1，并恢复 1 生命',
+                rarity: 'epic',
+                maxStacks: 4,
+                apply() {
+                    playerStats.maxLives += 1;
+                    lives = Math.min(playerStats.maxLives, lives + 1);
+                }
+            },
+            {
+                id: 'moveSpeed',
+                name: '矢量推进',
+                desc: '移动速度 +0.45',
+                rarity: 'common',
+                maxStacks: 8,
+                apply() {
+                    playerStats.moveSpeed = Math.min(13, playerStats.moveSpeed + 0.45);
+                }
+            },
+            {
+                id: 'scoreBonus',
+                name: '赏金协议',
+                desc: '得分倍率 +15%',
+                rarity: 'rare',
+                maxStacks: 8,
+                apply() {
+                    playerStats.scoreMultiplier += 0.15;
+                }
+            }
+        ];
+
         const keys = {
             up: false,
             down: false,
@@ -232,7 +495,56 @@
             shoot: false
         };
 
-        // 初始化星星
+        function loadMetaProgress() {
+            const fallback = {
+                stardust: 0,
+                bonusLives: 0,
+                fireRateBonus: 0,
+                extraUpgradeChoice: false,
+                rareChanceBoost: 0
+            };
+            try {
+                const raw = localStorage.getItem('spaceShooterMetaProgress');
+                if (!raw) return fallback;
+                const parsed = JSON.parse(raw);
+                return { ...fallback, ...parsed };
+            } catch (err) {
+                return fallback;
+            }
+        }
+
+        function saveMetaProgress() {
+            localStorage.setItem('spaceShooterMetaProgress', JSON.stringify(metaProgress));
+        }
+
+        function unlockMetaProgress() {
+            const unlocked = [];
+            if (metaProgress.stardust >= 20 && metaProgress.bonusLives < 1) {
+                metaProgress.bonusLives = 1;
+                unlocked.push('初始生命 +1');
+            }
+            if (metaProgress.stardust >= 40 && metaProgress.fireRateBonus < 0.05) {
+                metaProgress.fireRateBonus = 0.05;
+                unlocked.push('初始射速 +5%');
+            }
+            if (metaProgress.stardust >= 80 && !metaProgress.extraUpgradeChoice) {
+                metaProgress.extraUpgradeChoice = true;
+                unlocked.push('升级时改为 4 选 1');
+            }
+            if (metaProgress.stardust >= 120 && metaProgress.rareChanceBoost < 0.2) {
+                metaProgress.rareChanceBoost = 0.2;
+                unlocked.push('稀有升级出现概率提高');
+            }
+            return unlocked;
+        }
+
+        function resetPlayerStats() {
+            Object.assign(playerStats, defaultPlayerStats);
+            playerStats.maxLives += metaProgress.bonusLives;
+            playerStats.fireCooldown *= (1 - metaProgress.fireRateBonus);
+            lives = playerStats.maxLives;
+        }
+
         function initStars() {
             stars = [];
             for (let i = 0; i < 100; i++) {
@@ -246,7 +558,6 @@
             }
         }
 
-        // 更新星星
         function updateStars() {
             stars.forEach(star => {
                 star.y += star.speed;
@@ -258,7 +569,6 @@
             });
         }
 
-        // 绘制星星
         function drawStars() {
             stars.forEach(star => {
                 ctx.beginPath();
@@ -268,18 +578,15 @@
             });
         }
 
-        // 绘制玩家飞机
         function drawPlayer() {
             ctx.save();
             ctx.translate(player.x, player.y);
 
-            // 无敌状态闪烁效果
-            if (playerPowerups.invincible.active && Math.floor(frameCount / 5) % 2 === 0) {
-                ctx.globalAlpha = 0.5;
-            }
+            const flashing = (playerPowerups.invincible.active || playerInvulnFrames > 0) && Math.floor(frameCount / 5) % 2 === 0;
+            if (flashing) ctx.globalAlpha = 0.5;
 
-            // 引擎尾焰
-            const flameLength = 15 + Math.sin(frameCount * 0.3) * 5;
+            const speedStack = upgradeStacks.moveSpeed || 0;
+            const flameLength = 15 + Math.sin(frameCount * 0.3) * 5 + speedStack * 1.8;
             ctx.beginPath();
             ctx.moveTo(-8, 15);
             ctx.lineTo(0, 15 + flameLength);
@@ -291,7 +598,6 @@
             ctx.fillStyle = gradient;
             ctx.fill();
 
-            // 机身
             ctx.beginPath();
             ctx.moveTo(0, -20);
             ctx.lineTo(-15, 20);
@@ -304,17 +610,18 @@
             ctx.lineWidth = 2;
             ctx.stroke();
 
-            // 驾驶舱
             ctx.beginPath();
             ctx.arc(0, -5, 5, 0, Math.PI * 2);
             ctx.fillStyle = '#00ffff';
             ctx.fill();
 
-            // 无敌护盾效果
-            if (playerPowerups.invincible.active) {
+            if (playerPowerups.invincible.active || playerStats.shield > 0) {
                 ctx.beginPath();
                 ctx.arc(0, 0, 25, 0, Math.PI * 2);
-                ctx.strokeStyle = `rgba(255, 255, 0, ${0.3 + Math.sin(frameCount * 0.1) * 0.2})`;
+                const shieldAlpha = 0.25 + Math.sin(frameCount * 0.12) * 0.12;
+                ctx.strokeStyle = playerPowerups.invincible.active
+                    ? `rgba(255, 255, 0, ${shieldAlpha + 0.2})`
+                    : `rgba(120, 255, 255, ${shieldAlpha + 0.1})`;
                 ctx.lineWidth = 3;
                 ctx.stroke();
             }
@@ -322,77 +629,63 @@
             ctx.restore();
         }
 
-        // 更新玩家
-        function updatePlayer() {
-            if (keys.up && player.y > 25) player.y -= player.speed;
-            if (keys.down && player.y < canvas.height - 25) player.y += player.speed;
-            if (keys.left && player.x > 20) player.x -= player.speed;
-            if (keys.right && player.x < canvas.width - 20) player.x += player.speed;
+        function firePlayerWeapon() {
+            const bonusShots = playerPowerups.doubleShot.active ? 1 : 0;
+            const shotCount = 1 + playerStats.extraShots + bonusShots;
+            const angleStep = 8 * (Math.PI / 180);
+            const centerOffset = (shotCount - 1) / 2;
+            const damagePenalty = 1 + Math.max(0, shotCount - 1) * 0.14;
+            const baseDamage = Math.max(0.45, playerStats.bulletDamage / damagePenalty);
 
-            if (player.shootCooldown > 0) player.shootCooldown--;
-
-            if (keys.shoot && player.shootCooldown === 0) {
-                // 根据升级状态选择射击方式
-                if (playerPowerups.laser.active) {
-                    // 激光枪 - 穿透性激光
-                    playerBullets.push({
-                        x: player.x,
-                        y: player.y - 25,
-                        width: 8,
-                        height: 40,
-                        speed: 15,
-                        isLaser: true,
-                        damage: 3
-                    });
-                    player.shootCooldown = 8;
-                } else if (playerPowerups.doubleShot.active) {
-                    // 双排射击
-                    playerBullets.push({
-                        x: player.x - 10,
-                        y: player.y - 25,
-                        width: 4,
-                        height: 15,
-                        speed: 10
-                    });
-                    playerBullets.push({
-                        x: player.x + 10,
-                        y: player.y - 25,
-                        width: 4,
-                        height: 15,
-                        speed: 10
-                    });
-                    player.shootCooldown = 10;
-                } else {
-                    // 普通射击
-                    playerBullets.push({
-                        x: player.x,
-                        y: player.y - 25,
-                        width: 4,
-                        height: 15,
-                        speed: 10
-                    });
-                    player.shootCooldown = 10;
-                }
+            for (let i = 0; i < shotCount; i++) {
+                const angle = (i - centerOffset) * angleStep;
+                const isLaser = playerPowerups.laser.active || Math.random() < playerStats.laserChance;
+                const speed = isLaser ? playerStats.bulletSpeed + 5 : playerStats.bulletSpeed;
+                const bullet = {
+                    x: player.x,
+                    y: player.y - 25,
+                    width: isLaser ? (8 + (upgradeStacks.laserChance || 0)) : 4,
+                    height: isLaser ? 36 : 15,
+                    speed,
+                    vx: Math.sin(angle) * speed,
+                    vy: -Math.cos(angle) * speed,
+                    isLaser,
+                    penetration: isLaser
+                        ? 99
+                        : Math.max(0, Math.floor(((upgradeStacks.laserChance || 0) + (upgradeStacks.spreadShot || 0)) / 6)),
+                    damage: isLaser ? baseDamage * 1.9 : baseDamage
+                };
+                playerBullets.push(bullet);
             }
 
-            // 更新升级状态
+            player.shootCooldown = Math.max(3, Math.round(playerStats.fireCooldown));
+        }
+
+        function updatePlayer() {
+            if (keys.up && player.y > 25) player.y -= playerStats.moveSpeed;
+            if (keys.down && player.y < canvas.height - 25) player.y += playerStats.moveSpeed;
+            if (keys.left && player.x > 20) player.x -= playerStats.moveSpeed;
+            if (keys.right && player.x < canvas.width - 20) player.x += playerStats.moveSpeed;
+
+            if (playerInvulnFrames > 0) playerInvulnFrames--;
+            if (player.shootCooldown > 0) player.shootCooldown--;
+
+            if (keys.shoot && player.shootCooldown <= 0) {
+                firePlayerWeapon();
+            }
+
             for (const key in playerPowerups) {
                 const pu = playerPowerups[key];
                 if (pu.active) {
                     pu.timer--;
-                    if (pu.timer <= 0) {
-                        pu.active = false;
-                    }
+                    if (pu.timer <= 0) pu.active = false;
                 }
             }
         }
 
-        // 绘制子弹
         function drawBullets() {
-            // 玩家子弹
             playerBullets.forEach(bullet => {
                 if (bullet.isLaser) {
-                    // 激光枪效果
                     ctx.save();
                     ctx.shadowColor = '#ff00ff';
                     ctx.shadowBlur = 20;
@@ -412,7 +705,6 @@
             });
             ctx.shadowBlur = 0;
 
-            // 敌人子弹
             ctx.fillStyle = '#ff6600';
             ctx.shadowColor = '#ff6600';
             enemyBullets.forEach(bullet => {
@@ -421,38 +713,89 @@
             ctx.shadowBlur = 0;
         }
 
-        // 更新子弹
         function updateBullets() {
             playerBullets = playerBullets.filter(bullet => {
-                bullet.y -= bullet.speed;
-                return bullet.y > -bullet.height;
+                bullet.x += bullet.vx || 0;
+                bullet.y += bullet.vy || -bullet.speed;
+                return bullet.y > -bullet.height && bullet.y < canvas.height + 50 && bullet.x > -40 && bullet.x < canvas.width + 40;
             });
 
             enemyBullets = enemyBullets.filter(bullet => {
                 bullet.y += bullet.speed;
+                bullet.x += bullet.vx || 0;
                 return bullet.y < canvas.height + bullet.height;
             });
         }
 
-        // 生成敌人
+        function getDifficultyStage() {
+            const seconds = Math.floor(frameCount / 60);
+            if (seconds < 60) return 1;
+            if (seconds < 120) return 2;
+            if (seconds < 180) return 3;
+            return 4;
+        }
+
+        function rollEnemyType(stage) {
+            let table = [
+                { type: 'basic', weight: 1 }
+            ];
+            if (stage >= 2) table.push({ type: 'fast', weight: 0.9 });
+            if (stage >= 3) table.push({ type: 'tank', weight: 0.8 });
+            if (stage >= 4) table.push({ type: 'shooter', weight: 0.95 });
+
+            const eliteChance = Math.min(0.04 + stage * 0.025, 0.2);
+            if (Math.random() < eliteChance) return 'elite';
+
+            const total = table.reduce((acc, cur) => acc + cur.weight, 0);
+            let random = Math.random() * total;
+            for (const item of table) {
+                random -= item.weight;
+                if (random <= 0) return item.type;
+            }
+            return 'basic';
+        }
+
+        function createEnemy(type) {
+            const config = enemyTypeConfig[type];
+            const isBoss = type === 'boss';
+            return {
+                type,
+                isBoss,
+                isElite: type === 'elite',
+                x: Math.random() * (canvas.width - 100) + 50,
+                y: -40,
+                width: config.size,
+                height: config.size,
+                speed: config.speedMin + Math.random() * (config.speedMax - config.speedMin),
+                shootTimer: 30 + Math.random() * 80,
+                phase: Math.random() * Math.PI * 2,
+                health: config.health,
+                maxHealth: config.health,
+                shootBase: config.shootBase,
+                color: config.color,
+                stroke: config.stroke,
+                xpReward: config.xp,
+                scoreReward: config.score
+            };
+        }
+
         function spawnEnemy() {
-            if (Math.random() < 0.02) {
-                enemies.push({
-                    x: Math.random() * (canvas.width - 60) + 30,
-                    y: -30,
-                    width: 30,
-                    height: 30,
-                    speed: 2 + Math.random() * 1.5,
-                    shootTimer: Math.random() * 100,
-                    phase: Math.random() * Math.PI * 2,
-                    health: 1
-                });
+            const hasBossAlive = enemies.some(enemy => enemy.isBoss);
+            if (queuedBossSpawns > 0 && !hasBossAlive) {
+                queuedBossSpawns--;
+                enemies.push(createEnemy('boss'));
+                return;
+            }
+
+            const stage = getDifficultyStage();
+            const spawnChance = 0.016 + stage * 0.004;
+            if (Math.random() < spawnChance) {
+                enemies.push(createEnemy(rollEnemyType(stage)));
             }
         }
 
-        // 生成升级道具
         function spawnPowerup() {
-            if (Math.random() < 0.006) { // 约每2-3秒生成一次
+            if (Math.random() < 0.0042) {
                 const typeInfo = powerupTypes[Math.floor(Math.random() * powerupTypes.length)];
                 powerups.push({
                     x: Math.random() * (canvas.width - 40) + 20,
@@ -468,27 +811,18 @@
             }
         }
 
-        // 绘制升级道具
         function drawPowerups() {
             powerups.forEach(pu => {
                 ctx.save();
                 ctx.translate(pu.x, pu.y);
-
-                // 脉冲效果
                 const pulse = 1 + Math.sin(frameCount * 0.1 + pu.pulsePhase) * 0.15;
                 ctx.scale(pulse, pulse);
-
-                // 光晕
                 ctx.shadowColor = pu.color;
                 ctx.shadowBlur = 15;
-
-                // 圆形背景
                 ctx.beginPath();
                 ctx.arc(0, 0, 12, 0, Math.PI * 2);
                 ctx.fillStyle = pu.color;
                 ctx.fill();
-
-                // 内部图标
                 ctx.shadowBlur = 0;
                 ctx.fillStyle = '#000';
                 ctx.font = 'bold 14px Orbitron';
@@ -499,12 +833,10 @@
                 else if (pu.type === 'laser') icon = '⚡';
                 else if (pu.type === 'invincible') icon = '★';
                 ctx.fillText(icon, 0, 0);
-
                 ctx.restore();
             });
         }
 
-        // 更新升级道具
         function updatePowerups() {
             powerups.forEach(pu => {
                 pu.y += pu.speed;
@@ -512,74 +844,102 @@
             powerups = powerups.filter(pu => pu.y < canvas.height + 30);
         }
 
-        // 绘制敌人
         function drawEnemies() {
             enemies.forEach(enemy => {
                 ctx.save();
                 ctx.translate(enemy.x, enemy.y);
+                const half = enemy.width / 2;
+                const nose = enemy.isBoss ? half + 20 : half * 0.85;
 
-                // 敌人飞船
                 ctx.beginPath();
-                ctx.moveTo(0, 15);
-                ctx.lineTo(-15, -10);
-                ctx.lineTo(0, -5);
-                ctx.lineTo(15, -10);
+                ctx.moveTo(0, nose);
+                ctx.lineTo(-half, -half * 0.8);
+                ctx.lineTo(0, -half * 0.35);
+                ctx.lineTo(half, -half * 0.8);
                 ctx.closePath();
-                ctx.fillStyle = '#ff3366';
+                ctx.fillStyle = enemy.color;
                 ctx.fill();
-                ctx.strokeStyle = '#ff6699';
-                ctx.lineWidth = 2;
+                ctx.strokeStyle = enemy.stroke;
+                ctx.lineWidth = enemy.isElite || enemy.isBoss ? 3 : 2;
                 ctx.stroke();
+
+                if (enemy.isElite || enemy.isBoss) {
+                    ctx.beginPath();
+                    ctx.arc(0, 0, enemy.width * 0.68, 0, Math.PI * 2);
+                    ctx.strokeStyle = enemy.isBoss ? 'rgba(255, 231, 143, 0.5)' : 'rgba(255, 234, 173, 0.45)';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+
+                if (enemy.maxHealth > 1) {
+                    const barW = enemy.width + 8;
+                    const barX = -barW / 2;
+                    const hpRatio = Math.max(0, enemy.health / enemy.maxHealth);
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+                    ctx.fillRect(barX, -enemy.height / 2 - 12, barW, 5);
+                    ctx.fillStyle = enemy.isBoss ? '#ffdf69' : '#7dffae';
+                    ctx.fillRect(barX, -enemy.height / 2 - 12, barW * hpRatio, 5);
+                }
 
                 ctx.restore();
             });
         }
 
-        // 更新敌人
         function updateEnemies() {
             enemies.forEach(enemy => {
                 enemy.y += enemy.speed;
-                enemy.x += Math.sin(frameCount * 0.05 + enemy.phase) * 1.5;
+                enemy.x += Math.sin(frameCount * 0.05 + enemy.phase) * (enemy.isBoss ? 2 : 1.5);
+                enemy.x = Math.max(enemy.width / 2, Math.min(canvas.width - enemy.width / 2, enemy.x));
 
-                // 限制敌人不飞出边界
-                enemy.x = Math.max(20, Math.min(canvas.width - 20, enemy.x));
-
-                // 敌人射击
                 enemy.shootTimer--;
-                if (enemy.shootTimer <= 0 && enemy.y > 0 && enemy.y < canvas.height - 100) {
-                    enemyBullets.push({
-                        x: enemy.x,
-                        y: enemy.y + 20,
-                        width: 4,
-                        height: 12,
-                        speed: 5
-                    });
-                    enemy.shootTimer = 80 + Math.random() * 60;
+                if (enemy.shootTimer <= 0 && enemy.y > 0 && enemy.y < canvas.height - 80) {
+                    let bulletCount = 1;
+                    let spread = 0;
+                    let bulletSpeed = 4.8;
+                    if (enemy.type === 'shooter') {
+                        bulletCount = 2;
+                        spread = 0.2;
+                        bulletSpeed = 6;
+                    } else if (enemy.type === 'boss') {
+                        bulletCount = 3;
+                        spread = 0.3;
+                        bulletSpeed = 6.4;
+                    }
+                    for (let i = 0; i < bulletCount; i++) {
+                        const angle = bulletCount === 1 ? 0 : (i - (bulletCount - 1) / 2) * spread;
+                        enemyBullets.push({
+                            x: enemy.x,
+                            y: enemy.y + enemy.height / 2 - 2,
+                            width: enemy.type === 'boss' ? 5 : 4,
+                            height: enemy.type === 'boss' ? 14 : 12,
+                            speed: bulletSpeed,
+                            vx: Math.sin(angle) * 2.1
+                        });
+                    }
+                    enemy.shootTimer = enemy.shootBase + Math.random() * (enemy.type === 'boss' ? 16 : 45);
                 }
             });
 
-            enemies = enemies.filter(enemy => enemy.y < canvas.height + 50);
+            enemies = enemies.filter(enemy => enemy.y < canvas.height + 120);
         }
 
-        // 创建爆炸粒子
         function createExplosion(x, y, color) {
             for (let i = 0; i < 15; i++) {
                 const angle = Math.random() * Math.PI * 2;
                 const speed = Math.random() * 4 + 2;
                 particles.push({
-                    x: x,
-                    y: y,
+                    x,
+                    y,
                     vx: Math.cos(angle) * speed,
                     vy: Math.sin(angle) * speed,
                     life: 30,
                     maxLife: 30,
-                    color: color,
+                    color,
                     size: Math.random() * 4 + 2
                 });
             }
         }
 
-        // 更新粒子
         function updateParticles() {
             particles = particles.filter(p => {
                 p.x += p.vx;
@@ -591,7 +951,6 @@
             });
         }
 
-        // 绘制粒子
         function drawParticles() {
             particles.forEach(p => {
                 const alpha = p.life / p.maxLife;
@@ -602,102 +961,136 @@
             });
         }
 
-        // 碰撞检测
+        function handleEnemyKilled(enemy) {
+            createExplosion(enemy.x, enemy.y, 'rgb(255, 51, 102)');
+            const scoreGain = Math.round(enemy.scoreReward * playerStats.scoreMultiplier);
+            const xpGain = Math.round(enemy.xpReward * (enemy.isElite ? 1.2 : 1));
+            score += scoreGain;
+            gainXP(xpGain);
+            scoreValue.textContent = score;
+
+            if (enemy.isBoss) {
+                pendingBossRewards += 1;
+            }
+        }
+
+        function triggerShieldBurst() {
+            const stackCount = upgradeStacks.shield || 0;
+            if (stackCount < 3) return;
+            const radius = 110 + stackCount * 6;
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const enemy = enemies[i];
+                const dx = enemy.x - player.x;
+                const dy = enemy.y - player.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist <= radius) {
+                    enemy.health -= 2 + stackCount * 0.3;
+                    if (enemy.health <= 0) {
+                        handleEnemyKilled(enemy);
+                        enemies.splice(i, 1);
+                    }
+                }
+            }
+            createExplosion(player.x, player.y, 'rgb(120, 255, 255)');
+        }
+
+        function applyPlayerDamage(amount = 1) {
+            if (playerPowerups.invincible.active || playerInvulnFrames > 0) return;
+
+            if (playerStats.shield > 0) {
+                playerStats.shield -= 1;
+                playerInvulnFrames = 45;
+                triggerShieldBurst();
+                return;
+            }
+
+            lives -= amount;
+            playerInvulnFrames = 45;
+            createExplosion(player.x, player.y, 'rgb(0, 255, 136)');
+            updateLivesDisplay();
+        }
+
         function checkCollisions() {
-            // 玩家子弹击中敌人
             playerBullets = playerBullets.filter(bullet => {
-                let hit = false;
+                let removeBullet = false;
                 for (let i = enemies.length - 1; i >= 0; i--) {
                     const enemy = enemies[i];
                     if (bullet.x > enemy.x - enemy.width / 2 &&
                         bullet.x < enemy.x + enemy.width / 2 &&
                         bullet.y > enemy.y - enemy.height / 2 &&
                         bullet.y < enemy.y + enemy.height / 2) {
-                        if (bullet.isLaser) {
-                            // 激光穿透，持续伤害
-                            enemy.health -= bullet.damage || 1;
-                            if (enemy.health <= 0) {
-                                createExplosion(enemy.x, enemy.y, 'rgb(255, 51, 102)');
-                                enemies.splice(i, 1);
-                                score += 100;
-                                scoreValue.textContent = score;
-                            }
-                        } else {
-                            createExplosion(enemy.x, enemy.y, 'rgb(255, 51, 102)');
+                        enemy.health -= bullet.damage || 1;
+                        if (enemy.health <= 0) {
+                            handleEnemyKilled(enemy);
                             enemies.splice(i, 1);
-                            score += 100;
-                            scoreValue.textContent = score;
                         }
-                        hit = true;
-                        if (!bullet.isLaser) break;
+                        if (!bullet.isLaser) {
+                            if (bullet.penetration > 0) {
+                                bullet.penetration--;
+                            } else {
+                                removeBullet = true;
+                                break;
+                            }
+                        }
                     }
                 }
-                return bullet.isLaser ? true : !hit;
+                return !removeBullet;
             });
 
-            // 玩家拾取升级道具
             powerups = powerups.filter(pu => {
                 const dx = player.x - pu.x;
                 const dy = player.y - pu.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
                 if (distance < 35) {
-                    // 激活对应升级
                     playerPowerups[pu.type].active = true;
                     playerPowerups[pu.type].timer = playerPowerups[pu.type].duration;
-                    // 特效
                     createExplosion(pu.x, pu.y, pu.color);
                     return false;
                 }
                 return true;
             });
 
-            // 敌人子弹击中玩家
-            if (!playerPowerups.invincible.active) {
-                enemyBullets = enemyBullets.filter(bullet => {
-                    if (bullet.x > player.x - 15 &&
-                        bullet.x < player.x + 15 &&
-                        bullet.y > player.y - 20 &&
-                        bullet.y < player.y + 20) {
-                        createExplosion(player.x, player.y, 'rgb(0, 255, 136)');
-                        lives--;
-                        updateLivesDisplay();
-                        return false;
-                    }
-                    return true;
-                });
+            enemyBullets = enemyBullets.filter(bullet => {
+                if (bullet.x > player.x - 15 &&
+                    bullet.x < player.x + 15 &&
+                    bullet.y > player.y - 20 &&
+                    bullet.y < player.y + 20) {
+                    applyPlayerDamage(1);
+                    return false;
+                }
+                return true;
+            });
 
-                // 玩家撞敌人
-                enemies = enemies.filter(enemy => {
-                    const dx = player.x - enemy.x;
-                    const dy = player.y - enemy.y;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
-                    if (distance < 30) {
-                        createExplosion(enemy.x, enemy.y, 'rgb(255, 51, 102)');
-                        createExplosion(player.x, player.y, 'rgb(0, 255, 136)');
-                        lives--;
-                        updateLivesDisplay();
-                        return false;
-                    }
-                    return true;
-                });
-            }
+            enemies = enemies.filter(enemy => {
+                const dx = player.x - enemy.x;
+                const dy = player.y - enemy.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                if (distance < (enemy.isBoss ? 60 : 30)) {
+                    createExplosion(enemy.x, enemy.y, 'rgb(255, 51, 102)');
+                    applyPlayerDamage(enemy.isBoss ? 2 : 1);
+                    return enemy.isBoss;
+                }
+                return true;
+            });
 
-            // 检查游戏结束
-            if (lives <= 0) {
-                gameOver();
-            }
+            if (lives <= 0) gameOver();
         }
 
-        // 更新生命值显示
         function updateLivesDisplay() {
+            const visibleHearts = Math.min(lives, 10);
             let hearts = '';
-            for (let i = 0; i < lives; i++) {
-                hearts += '❤';
-            }
-            livesValue.textContent = hearts;
+            for (let i = 0; i < visibleHearts; i++) hearts += '❤';
+            if (lives > 10) hearts += `+${lives - 10}`;
+            if (playerStats.shield > 0) hearts += ` 盾x${playerStats.shield}`;
+            livesValue.textContent = hearts || '0';
         }
 
-        // 更新升级计时器显示
+        function updateLevelDisplay() {
+            levelValue.textContent = level;
+            const ratio = Math.max(0, Math.min(1, xp / xpToNext));
+            xpFill.style.width = `${Math.round(ratio * 100)}%`;
+        }
+
         function updatePowerupTimerDisplay() {
             const doubleShotEl = document.getElementById('doubleShotTimer');
             const laserEl = document.getElementById('laserTimer');
@@ -731,82 +1124,242 @@
             }
         }
 
-        // 游戏结束
+        function gainXP(amount) {
+            xp += amount;
+            while (xp >= xpToNext) {
+                xp -= xpToNext;
+                level++;
+                pendingLevelUps++;
+                if (level % 5 === 0) {
+                    queuedBossSpawns++;
+                }
+                xpToNext = Math.floor(xpToNext * 1.28 + 40);
+            }
+            updateLevelDisplay();
+
+            if (!choosingUpgrade && (pendingBossRewards > 0 || pendingLevelUps > 0)) {
+                openUpgradeSelection(pendingBossRewards > 0 ? 'boss' : 'level');
+            }
+        }
+
+        function weightedPick(pool) {
+            const total = pool.reduce((sum, item) => sum + item.weight, 0);
+            let random = Math.random() * total;
+            for (const item of pool) {
+                random -= item.weight;
+                if (random <= 0) return item;
+            }
+            return pool[pool.length - 1];
+        }
+
+        function generateUpgradeChoices(context) {
+            const choices = [];
+            const choiceCount = metaProgress.extraUpgradeChoice ? 4 : 3;
+            const minRarityRank = context === 'boss' ? 1 : 0;
+            const rarityRank = { common: 0, rare: 1, epic: 2, legendary: 3 };
+
+            const candidates = upgradePool.filter(upgrade => {
+                const stack = upgradeStacks[upgrade.id] || 0;
+                const maxStacks = upgrade.maxStacks || 99;
+                return stack < maxStacks && rarityRank[upgrade.rarity] >= minRarityRank;
+            });
+
+            let safePool = [...candidates];
+            while (choices.length < choiceCount && safePool.length > 0) {
+                const weighted = safePool.map(upgrade => {
+                    const rarity = rarityConfig[upgrade.rarity];
+                    let weight = rarity.weight;
+                    if (upgrade.rarity !== 'common') weight += metaProgress.rareChanceBoost * 0.15;
+                    return { upgrade, weight };
+                });
+                const selected = weightedPick(weighted).upgrade;
+                choices.push(selected);
+                safePool = safePool.filter(item => item.id !== selected.id);
+            }
+
+            return choices;
+        }
+
+        function renderUpgradeChoices() {
+            upgradeCardsEl.innerHTML = '';
+            offeredUpgrades.forEach((upgrade, index) => {
+                const rarity = rarityConfig[upgrade.rarity];
+                const stack = upgradeStacks[upgrade.id] || 0;
+                const card = document.createElement('button');
+                card.className = 'upgrade-card';
+                card.style.borderColor = rarity.color;
+                card.innerHTML = `
+                    <div class="upgrade-rarity" style="color:${rarity.color}">${rarity.label}</div>
+                    <div class="upgrade-name">${index + 1}. ${upgrade.name}</div>
+                    <div class="upgrade-desc">${upgrade.desc}</div>
+                    <div class="upgrade-desc" style="margin-top:8px;opacity:0.8">当前层数: ${stack}</div>
+                `;
+                card.addEventListener('click', () => pickUpgrade(index));
+                upgradeCardsEl.appendChild(card);
+            });
+        }
+
+        function openUpgradeSelection(context) {
+            choosingUpgrade = true;
+            currentUpgradeContext = context;
+            offeredUpgrades = generateUpgradeChoices(context);
+            if (offeredUpgrades.length === 0) {
+                if (context === 'boss' && pendingBossRewards > 0) pendingBossRewards--;
+                else if (pendingLevelUps > 0) pendingLevelUps--;
+                choosingUpgrade = false;
+                return;
+            }
+            upgradeTitleEl.textContent = context === 'boss' ? 'Boss 奖励强化' : `等级 ${level} - 选择强化`;
+            upgradeSubtitleEl.textContent = context === 'boss'
+                ? '击败 Boss，获得高稀有强化'
+                : '战斗暂停，选择 1 个升级继续';
+            renderUpgradeChoices();
+            upgradeOverlay.classList.remove('hidden');
+        }
+
+        function pickUpgrade(index) {
+            const selected = offeredUpgrades[index];
+            if (!selected) return;
+
+            selected.apply();
+            upgradeStacks[selected.id] = (upgradeStacks[selected.id] || 0) + 1;
+            runUpgradeHistory[selected.name] = (runUpgradeHistory[selected.name] || 0) + 1;
+
+            if (currentUpgradeContext === 'boss' && pendingBossRewards > 0) {
+                pendingBossRewards--;
+            } else if (pendingLevelUps > 0) {
+                pendingLevelUps--;
+            }
+
+            updateLivesDisplay();
+            updateLevelDisplay();
+            offeredUpgrades = [];
+
+            if (pendingBossRewards > 0 || pendingLevelUps > 0) {
+                openUpgradeSelection(pendingBossRewards > 0 ? 'boss' : 'level');
+                return;
+            }
+
+            choosingUpgrade = false;
+            upgradeOverlay.classList.add('hidden');
+        }
+
         function gameOver() {
             gameRunning = false;
+            choosingUpgrade = false;
+            upgradeOverlay.classList.add('hidden');
             finalScoreEl.querySelector('span').textContent = score;
             finalScoreEl.style.display = 'block';
             document.querySelector('.menu-title').textContent = '游戏结束';
             startBtn.textContent = '重新开始';
+
+            const gainedStardust = Math.max(1, Math.floor(score / 800) + Math.floor(level / 2));
+            metaProgress.stardust += gainedStardust;
+            const unlocked = unlockMetaProgress();
+            saveMetaProgress();
+
+            const upgradesSummary = Object.entries(runUpgradeHistory)
+                .map(([name, count]) => `${name} x${count}`)
+                .join(' | ');
+            runUpgradesEl.style.display = 'block';
+            runUpgradesEl.textContent = upgradesSummary ? `本局构筑: ${upgradesSummary}` : '本局未获得升级';
+
+            metaProgressEl.style.display = 'block';
+            metaProgressEl.textContent = `获得星尘 +${gainedStardust}，总星尘 ${metaProgress.stardust}` +
+                (unlocked.length ? ` | 解锁: ${unlocked.join('、')}` : '');
+
             menuOverlay.classList.remove('hidden');
         }
 
-        // 开始游戏
         function startGame() {
             gameRunning = true;
+            choosingUpgrade = false;
             score = 0;
-            lives = 3;
+            level = 1;
+            xp = 0;
+            xpToNext = 300;
             frameCount = 0;
+            pendingLevelUps = 0;
+            pendingBossRewards = 0;
+            queuedBossSpawns = 0;
+            offeredUpgrades = [];
+            runUpgradeHistory = {};
+            playerInvulnFrames = 0;
+            Object.keys(upgradeStacks).forEach(key => delete upgradeStacks[key]);
+
+            resetPlayerStats();
             player.x = 400;
             player.y = 520;
+            player.shootCooldown = 0;
+
             playerBullets = [];
             enemyBullets = [];
             enemies = [];
             particles = [];
             powerups = [];
-            // 重置升级状态
+
             for (const key in playerPowerups) {
                 playerPowerups[key].active = false;
                 playerPowerups[key].timer = 0;
             }
+
             scoreValue.textContent = '0';
             updateLivesDisplay();
+            updateLevelDisplay();
             updatePowerupTimerDisplay();
+            runUpgradesEl.style.display = 'none';
+            metaProgressEl.style.display = 'none';
+            finalScoreEl.style.display = 'none';
+            upgradeOverlay.classList.add('hidden');
             menuOverlay.classList.add('hidden');
+            document.querySelector('.menu-title').textContent = '太空射击';
+
             initStars();
             gameLoop();
         }
 
-        // 游戏主循环
         function gameLoop() {
             if (!gameRunning) return;
 
-            // 清空画布
             ctx.fillStyle = '#0a0a1a';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // 更新和绘制
-            updateStars();
+            if (!choosingUpgrade) {
+                updateStars();
+                spawnPowerup();
+                updatePowerups();
+                updatePlayer();
+                updateBullets();
+                spawnEnemy();
+                updateEnemies();
+                updateParticles();
+                checkCollisions();
+                frameCount++;
+            }
+
             drawStars();
-
-            // 升级道具
-            spawnPowerup();
-            updatePowerups();
             drawPowerups();
-
-            updatePlayer();
             drawPlayer();
-
-            updateBullets();
             drawBullets();
-
-            spawnEnemy();
-            updateEnemies();
             drawEnemies();
-
-            updateParticles();
             drawParticles();
 
-            checkCollisions();
-
             updatePowerupTimerDisplay();
+            updateLevelDisplay();
 
-            frameCount++;
+            if (!choosingUpgrade && (pendingBossRewards > 0 || pendingLevelUps > 0)) {
+                openUpgradeSelection(pendingBossRewards > 0 ? 'boss' : 'level');
+            }
+
             requestAnimationFrame(gameLoop);
         }
 
-        // 事件监听
         document.addEventListener('keydown', e => {
+            if (choosingUpgrade && ['1', '2', '3', '4'].includes(e.key)) {
+                pickUpgrade(Number(e.key) - 1);
+                e.preventDefault();
+                return;
+            }
             if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') keys.up = true;
             if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') keys.down = true;
             if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = true;
@@ -827,8 +1380,9 @@
 
         startBtn.addEventListener('click', startGame);
 
-        // 初始化
         initStars();
+        updateLivesDisplay();
+        updateLevelDisplay();
     </script>
 </body>
 </html>
